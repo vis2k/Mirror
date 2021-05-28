@@ -51,10 +51,17 @@ namespace Mirror
         /// <summary>True if the client is currently connected to the server.</summary>
         public abstract bool ClientConnected();
 
-        /// <summary>Connects the client to the server at the address.</summary>
+        /// <summary>Connects the client to the server at address. Can be "IP" or "IP:Port" etc. depending on the Transport.</summary>
+        // IMPORTANT: Transports should support both "IP" and "IP:Port" for
+        //            NetworkDiscovery, list servers, etc.
+        //            (easier than supporting Uris)
+        //            => use Utils.SplitNetworkAddress() to split "IP:Port"!
         public abstract void ClientConnect(string address);
 
         /// <summary>Connects the client to the server at the Uri.</summary>
+        // DEPRECATED 2021-05-27
+        public const string ConnectUriObsoleteMessage = "Uri support will be removed. Use Connect('IP:Port') instead of Connect(Uri).";
+        [Obsolete(ConnectUriObsoleteMessage)]
         public virtual void ClientConnect(Uri uri)
         {
             // By default, to keep backwards compatibility, just connect to the host
@@ -80,7 +87,20 @@ namespace Mirror
 
         /// <summary>Returns server address as Uri.</summary>
         // Useful for NetworkDiscovery.
+        // DEPRECATED 2021-05-27
+        public const string ServerUriObsoleteMessage = "Uri support will be removed. Use ServerAddress() instead, which can be 'IP:Port' too.";
+        [Obsolete(ServerUriObsoleteMessage)]
         public abstract Uri ServerUri();
+
+        /// <summary>Returns full server address like "IP:Port". Useful for clients to connect.</summary>
+        // => reuse obsolete ServerUri() by default. Give transports time to upgrade.
+        public virtual string ServerAddress()
+        {
+#pragma warning disable 618
+            Uri uri = ServerUri();
+#pragma warning restore 618
+            return $"{uri.Host}:{uri.Port}";
+        }
 
         /// <summary>Called by Transport when a new client connected to the server.</summary>
         public Action<int> OnServerConnected = (connId) => Debug.LogWarning("OnServerConnected called with no handler");
