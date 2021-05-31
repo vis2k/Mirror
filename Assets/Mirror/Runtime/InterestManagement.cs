@@ -1,35 +1,15 @@
 // interest management component for custom solutions like
 // distance based, spatial hashing, raycast based, etc.
+
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Mirror
 {
     [DisallowMultipleComponent]
-    public abstract class InterestManagement : MonoBehaviour
+    public abstract class InterestManagement : LowLevelInterestManagement
     {
-        // Awake configures InterestManagement in NetworkServer/Client
-        void Awake()
-        {
-            if (NetworkServer.aoi == null)
-            {
-                NetworkServer.aoi = this;
-            }
-            else Debug.LogError($"Only one InterestManagement component allowed. {NetworkServer.aoi.GetType()} has been set up already.");
-
-            if (NetworkClient.aoi == null)
-            {
-                NetworkClient.aoi = this;
-            }
-            else Debug.LogError($"Only one InterestManagement component allowed. {NetworkClient.aoi.GetType()} has been set up already.");
-        }
-
-        // Callback used by the visibility system to determine if an observer
-        // (player) can see the NetworkIdentity. If this function returns true,
-        // the network connection will be added as an observer.
-        //   conn: Network connection of a player.
-        //   returns True if the player can see this object.
-        public abstract bool OnCheckObserver(NetworkIdentity identity, NetworkConnection newObserver);
+        readonly HashSet<NetworkConnection> newObservers = new HashSet<NetworkConnection>();
 
         // rebuild observers for the given NetworkIdentity.
         // Server will automatically spawn/despawn added/removed ones.
@@ -48,7 +28,8 @@ namespace Mirror
         //
         // Mirror maintains .observing automatically in the background. best of
         // both worlds without any worrying now!
-        public abstract void OnRebuildObservers(NetworkIdentity identity, HashSet<NetworkConnection> newObservers, bool initialize);
+        public abstract void OnRebuildObservers(NetworkIdentity identity, HashSet<NetworkConnection> newObservers,
+            bool initialize);
 
         // helper function to trigger a full rebuild.
         // most implementations should call this in a certain interval.
@@ -64,28 +45,100 @@ namespace Mirror
             }
         }
 
-        // Callback used by the visibility system for objects on a host.
-        // Objects on a host (with a local client) cannot be disabled or
-        // destroyed when they are not visible to the local client. So this
-        // function is called to allow custom code to hide these objects. A
-        // typical implementation will disable renderer components on the
-        // object. This is only called on local clients on a host.
-        // => need the function in here and virtual so people can overwrite!
-        // => not everyone wants to hide renderers!
-        public virtual void SetHostVisibility(NetworkIdentity identity, bool visible)
+        public override void OnRequestRebuild(NetworkIdentity identity, bool initialize)
         {
-            foreach (Renderer rend in identity.GetComponentsInChildren<Renderer>())
-                rend.enabled = visible;
+            // clear newObservers hashset before using it
+            newObservers.Clear();
+
+            // not force hidden?
+            if (identity.visible != Visibility.ForceHidden)
+            {
+                OnRebuildObservers(identity, newObservers, initialize);
+            }
+
+            // IMPORTANT: AFTER rebuilding add own player connection in any case
+            // to ensure player always sees himself no matter what.
+            // -> OnRebuildObservers might clear observers, so we need to add
+            //    the player's own connection AFTER. 100% fail safe.
+            // -> fixes https://github.com/vis2k/Mirror/issues/692 where a
+            //    player might teleport out of the ProximityChecker's cast,
+            //    losing the own connection as observer.
+            if (identity.connectionToClient != null)
+            {
+                newObservers.Add(identity.connectionToClient);
+            }
+
+            bool changed = false;
+
+            // add all newObservers that aren't in .observers yet
+            foreach (NetworkConnection conn in newObservers)
+            {
+                // only add ready connections.
+                // otherwise the player might not be in the world yet or anymore
+                if (conn != null && conn.isReady)
+                {
+                    if (initialize || !identity.observers.ContainsKey(conn.connectionId))
+                    {
+                        // new observer
+                        AddObserver(conn, identity);
+                        // Debug.Log("New Observer for " + gameObject + " " + conn);
+                        changed = true;
+                    }
+                }
+            }
+
+            // remove all old .observers that aren't in newObservers anymore
+            foreach (NetworkConnection conn in identity.observers.Values)
+            {
+                if (!newObservers.Contains(conn))
+                {
+                    // removed observer
+                    RemoveObserver(conn, identity);
+                    // Debug.Log("Removed Observer for " + gameObject + " " + conn);
+                    changed = true;
+                }
+            }
+
+            // copy new observers to observers
+            if (changed)
+            {
+                identity.observers.Clear();
+                foreach (NetworkConnection conn in newObservers)
+                {
+                    if (conn != null && conn.isReady)
+                        identity.observers.Add(conn.connectionId, conn);
+                }
+            }
+
+            // special case for host mode: we use SetHostVisibility to hide
+            // NetworkIdentities that aren't in observer range from host.
+            // this is what games like Dota/Counter-Strike do too, where a host
+            // does NOT see all players by default. they are in memory, but
+            // hidden to the host player.
+            //
+            // this code is from UNET, it's a bit strange but it works:
+            // * it hides newly connected identities in host mode
+            //   => that part was the intended behaviour
+            // * it hides ALL NetworkIdentities in host mode when the host
+            //   connects but hasn't selected a character yet
+            //   => this only works because we have no .localConnection != null
+            //      check. at this stage, localConnection is null because
+            //      StartHost starts the server first, then calls this code,
+            //      then starts the client and sets .localConnection. so we can
+            //      NOT add a null check without breaking host visibility here.
+            // * it hides ALL NetworkIdentities in server-only mode because
+            //   observers never contain the 'null' .localConnection
+            //   => that was not intended, but let's keep it as it is so we
+            //      don't break anything in host mode. it's way easier than
+            //      iterating all identities in a special function in StartHost.
+            if (initialize)
+            {
+                if (!newObservers.Contains(NetworkServer.localConnection))
+                {
+                    // obsolete legacy system support (for now)
+                    SetHostVisibility(identity, false);
+                }
+            }
         }
-
-        /// <summary>
-        /// This is called on the server when a new networked object is spawned
-        /// </summary>
-        public virtual void OnSpawned(NetworkIdentity identity) {}
-
-        /// <summary>
-        /// This is called on the server when a networked object is destroyed
-        /// </summary>
-        public virtual void OnDestroyed(NetworkIdentity identity) {}
     }
 }
