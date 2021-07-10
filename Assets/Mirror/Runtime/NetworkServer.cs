@@ -38,7 +38,7 @@ namespace Mirror
 
         // interest management component (optional)
         // by default, everyone observes everyone
-        public static InterestManagement aoi;
+        public static LowLevelInterestManagement aoi;
 
         // Deprecated 2021-05-10
         [Obsolete("Transport is responsible for timeouts.")]
@@ -964,6 +964,20 @@ namespace Mirror
 
             // Debug.Log("SpawnObject instance ID " + identity.netId + " asset ID " + identity.assetId);
 
+            if (aoi)
+            {
+                // This calls user code which might throw exceptions
+                // We don't want this to leave us in bad state
+                try
+                {
+                    aoi.OnSpawned(identity);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
+
             RebuildObservers(identity, true);
         }
 
@@ -1181,6 +1195,19 @@ namespace Mirror
 
         static void DestroyObject(NetworkIdentity identity, bool destroyServerObject)
         {
+            if (aoi)
+            {
+                // This calls user code which might throw exceptions
+                // We don't want this to leave us in bad state
+                try
+                {
+                    aoi.OnDestroyed(identity);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
             // Debug.Log("DestroyObject instance:" + identity.netId);
             NetworkIdentity.spawned.Remove(identity.netId);
 
@@ -1274,7 +1301,7 @@ namespace Mirror
         }
 
         // rebuild observers via interest management system
-        static void RebuildObserversCustom(NetworkIdentity identity, bool initialize)
+        static void RebuildObserversLegacy(NetworkIdentity identity, bool initialize)
         {
             // clear newObservers hashset before using it
             newObservers.Clear();
@@ -1282,13 +1309,9 @@ namespace Mirror
             // not force hidden?
             if (identity.visible != Visibility.ForceHidden)
             {
-                // obsolete legacy system support (for now)
 #pragma warning disable 618
-                if (identity.visibility != null)
-                    identity.visibility.OnRebuildObservers(newObservers, initialize);
+                identity.visibility.OnRebuildObservers(newObservers, initialize);
 #pragma warning restore 618
-                else
-                    aoi.OnRebuildObservers(identity, newObservers, initialize);
             }
 
             // IMPORTANT: AFTER rebuilding add own player connection in any case
@@ -1421,10 +1444,16 @@ namespace Mirror
             {
                 RebuildObserversDefault(identity, initialize);
             }
-            // otherwise let interest management system rebuild
+            // legacy support
+#pragma warning disable 618
+            else if (identity.visibility != null)
+#pragma warning restore 618
+            {
+                RebuildObserversLegacy(identity, initialize);
+            }
             else
             {
-                RebuildObserversCustom(identity, initialize);
+                aoi.OnRequestRebuild(identity, initialize);
             }
         }
 
