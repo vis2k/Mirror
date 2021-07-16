@@ -139,6 +139,19 @@ namespace Mirror
         //    during FinishLoadScene.
         public NetworkManagerMode mode { get; private set; }
 
+#if UNITY_EDITOR
+        void Reset()
+        {
+            // Prevent adding NetworkManager to parent or child of another NetworkManager
+            foreach (NetworkManager networkManager in transform.root.GetComponentsInChildren<NetworkManager>().ToList())
+                if (networkManager != this)
+                {
+                    Debug.LogError("NetworkManager cannot be added to the same object hierarchy as another NetworkManager.");
+                    DestroyImmediate(this, true);
+                }
+        }
+#endif
+
         // virtual so that inheriting classes' OnValidate() can call base.OnValidate() too
         public virtual void OnValidate()
         {
