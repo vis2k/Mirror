@@ -273,7 +273,8 @@ namespace Mirror
         }
 
         // hasSpawned should always be false before runtime
-        [SerializeField, HideInInspector] bool hasSpawned;
+        // internal for tests
+        [SerializeField, HideInInspector] internal bool hasSpawned;
         public bool SpawnedFromInstantiate { get; private set; }
 
         // NetworkBehaviour components are initialized in Awake once.
@@ -1198,6 +1199,10 @@ namespace Mirror
             isClient = false;
             isServer = false;
             //isLocalPlayer = false; <- cleared AFTER ClearLocalPlayer below!
+
+            // remove authority flag. This object may be unspawned, not destroyed, on client.
+            hasAuthority = false;
+            NotifyAuthority();
 
             netId = 0;
             connectionToServer = null;
