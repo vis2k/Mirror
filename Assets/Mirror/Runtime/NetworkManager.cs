@@ -940,7 +940,9 @@ namespace Mirror
 
             if (clientReadyConnection != null)
             {
+#pragma warning disable 618
                 OnClientConnect(clientReadyConnection);
+#pragma warning restore 618
                 clientLoadedScene = true;
                 clientReadyConnection = null;
             }
@@ -976,7 +978,9 @@ namespace Mirror
                 if (NetworkClient.isConnected)
                 {
                     // let client know that we changed scene
+#pragma warning disable 618
                     OnClientSceneChanged(NetworkClient.connection);
+#pragma warning restore 618
                 }
             }
         }
@@ -1003,14 +1007,18 @@ namespace Mirror
 
             if (clientReadyConnection != null)
             {
+#pragma warning disable 618
                 OnClientConnect(clientReadyConnection);
+#pragma warning restore 618
                 clientLoadedScene = true;
                 clientReadyConnection = null;
             }
 
             if (NetworkClient.isConnected)
             {
+#pragma warning disable 618
                 OnClientSceneChanged(NetworkClient.connection);
+#pragma warning restore 618
             }
         }
 
@@ -1148,34 +1156,39 @@ namespace Mirror
             //Debug.Log("NetworkManager.OnClientAuthenticated");
 
             // set connection to authenticated
-            conn.isAuthenticated = true;
+            NetworkClient.connection.isAuthenticated = true;
 
             // proceed with the login handshake by calling OnClientConnect
             if (string.IsNullOrEmpty(onlineScene) || onlineScene == offlineScene || IsSceneActive(onlineScene))
             {
                 clientLoadedScene = false;
-                OnClientConnect(conn);
+#pragma warning disable 618
+                OnClientConnect(NetworkClient.connection);
+#pragma warning restore 618
             }
             else
             {
                 // will wait for scene id to come from the server.
                 clientLoadedScene = true;
-                clientReadyConnection = conn;
+                clientReadyConnection = NetworkClient.connection;
             }
         }
 
-        // TODO call OnClientDisconnect directly, don't pass the connection
         void OnClientDisconnectInternal()
         {
             //Debug.Log("NetworkManager.OnClientDisconnectInternal");
+#pragma warning disable 618
             OnClientDisconnect(NetworkClient.connection);
+#pragma warning restore 618
         }
 
         void OnClientNotReadyMessageInternal(NotReadyMessage msg)
         {
             //Debug.Log("NetworkManager.OnClientNotReadyMessageInternal");
             NetworkClient.ready = false;
+#pragma warning disable 618
             OnClientNotReady(NetworkClient.connection);
+#pragma warning restore 618
             // NOTE: clientReadyConnection is not set here! don't want OnClientConnect to be invoked again after scene changes.
         }
 
@@ -1244,8 +1257,7 @@ namespace Mirror
         public virtual void OnServerSceneChanged(string sceneName) {}
 
         /// <summary>Called on the client when connected to a server. By default it sets client as ready and adds a player.</summary>
-        // TODO client only ever uses NetworkClient.connection. this parameter is redundant.
-        public virtual void OnClientConnect(NetworkConnection conn)
+        public virtual void OnClientConnect()
         {
             // OnClientConnect by default calls AddPlayer but it should not do
             // that when we have online/offline scenes. so we need the
@@ -1263,12 +1275,19 @@ namespace Mirror
             }
         }
 
+        // Deprecated 2021-07-08
+        [Obsolete("Remove the NetworkConnection parameter in your override and use NetworkClient.connection instead.")]
+        public virtual void OnClientConnect(NetworkConnection conn) => OnClientConnect();
+
         /// <summary>Called on clients when disconnected from a server.</summary>
-        // TODO client only ever uses NetworkClient.connection. this parameter is redundant.
-        public virtual void OnClientDisconnect(NetworkConnection conn)
+        public virtual void OnClientDisconnect()
         {
             StopClient();
         }
+
+        // Deprecated 2021-07-08
+        [Obsolete("Remove the NetworkConnection parameter in your override and use NetworkClient.connection instead.")]
+        public virtual void OnClientDisconnect(NetworkConnection conn) => OnClientDisconnect();
 
         // Deprecated 2021-02-13
         [Obsolete("OnClientError was removed because it hasn't been used in a long time.")]
@@ -1278,8 +1297,11 @@ namespace Mirror
         public virtual void OnClientError(Exception exception) {}
 
         /// <summary>Called on clients when a servers tells the client it is no longer ready, e.g. when switching scenes.</summary>
-        // TODO client only ever uses NetworkClient.connection. this parameter is redundant.
-        public virtual void OnClientNotReady(NetworkConnection conn) {}
+        public virtual void OnClientNotReady() { }
+
+        // Deprecated 2021-07-08
+        [Obsolete("Remove the NetworkConnection parameter in your override and use NetworkClient.connection instead.")]
+        public virtual void OnClientNotReady(NetworkConnection conn) => OnClientNotReady();
 
         /// <summary>Called from ClientChangeScene immediately before SceneManager.LoadSceneAsync is executed</summary>
         // customHandling: indicates if scene loading will be handled through overrides
@@ -1289,8 +1311,7 @@ namespace Mirror
         // Scene changes can cause player objects to be destroyed. The default
         // implementation of OnClientSceneChanged in the NetworkManager is to
         // add a player object for the connection if no player object exists.
-        // TODO client only ever uses NetworkClient.connection. this parameter is redundant.
-        public virtual void OnClientSceneChanged(NetworkConnection conn)
+        public virtual void OnClientSceneChanged()
         {
             // always become ready.
             if (!NetworkClient.ready) NetworkClient.Ready();
@@ -1302,6 +1323,10 @@ namespace Mirror
                 NetworkClient.AddPlayer();
             }
         }
+
+        // Deprecated 2021-07-08
+        [Obsolete("Remove the NetworkConnection parameter in your override and use NetworkClient.connection instead.")]
+        public virtual void OnClientSceneChanged(NetworkConnection conn) => OnClientSceneChanged();
 
         // Since there are multiple versions of StartServer, StartClient and
         // StartHost, to reliably customize their functionality, users would
